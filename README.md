@@ -38,6 +38,11 @@ Click the extension icon and fill in:
 ```
 Title: concise MR title
 
+## Related Links
+- **JIRA:** <link>
+- **Figma:** <link>
+- **PRD:** <link>
+
 ## What was changed
 - bullet list of changes
 
@@ -50,6 +55,8 @@ Title: concise MR title
 ## How to test
 1. numbered verification steps
 ```
+
+> When you click **Generate**, a dialog asks for optional context (free-text notes, JIRA/Figma/PRD links). Notes are fed to the AI; links render as the **Related Links** section. Everything is optional — leave blank to skip.
 
 ## License
 

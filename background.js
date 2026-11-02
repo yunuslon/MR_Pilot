@@ -1,5 +1,7 @@
 /* background.js — service worker: GitLab API + AI API */
 
+chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.action === 'generate') {
     handleGenerate(msg).then((result) => sendResponse(result)).catch((err) => sendResponse({ error: err.message }));
@@ -7,14 +9,26 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 });
 
-async function handleGenerate({ platform, domain, projectPath, iid, sourceBranch, targetBranch, isNew }) {
-  const cfg = await chrome.storage.sync.get(['aiBaseUrl', 'aiApiKey', 'aiModel', 'gitlabToken', 'language']);
+async function handleGenerate({ domain, projectPath, iid, sourceBranch, targetBranch, isNew, additionalContext, jiraLinks, figmaLinks, prdLinks }) {
+  const cfg = await chrome.storage.local.get(['aiBaseUrl', 'aiApiKey', 'aiModel', 'gitlabToken', 'language']);
   if (!cfg.gitlabToken) throw new Error('GitLab token not configured. Open extension settings.');
   if (!cfg.aiApiKey) throw new Error('AI API key not configured. Open extension settings.');
 
   const diff = await fetchDiff({ domain, projectPath, iid, sourceBranch, targetBranch, isNew, token: cfg.gitlabToken });
-  const result = await callAI(diff, cfg);
+  const result = await callAI(diff, cfg, { additionalContext });
+  const relatedLinks = buildRelatedLinks({ jiraLinks, figmaLinks, prdLinks });
+  if (relatedLinks) result.body = `${relatedLinks}\n\n${result.body}`;
   return result;
+}
+
+function buildRelatedLinks({ jiraLinks = [], figmaLinks = [], prdLinks = [] }) {
+  const items = [
+    ...jiraLinks.map((url) => `- **JIRA:** ${url}`),
+    ...figmaLinks.map((url) => `- **Figma:** ${url}`),
+    ...prdLinks.map((url) => `- **PRD:** ${url}`)
+  ];
+  if (!items.length) return '';
+  return `## Related Links\n${items.join('\n')}`;
 }
 
 /* ---- GitLab API ---- */
@@ -57,7 +71,7 @@ async function fetchDiff({ domain, projectPath, iid, sourceBranch, targetBranch,
 
 /* ---- AI API ---- */
 
-async function callAI(diff, cfg) {
+async function callAI(diff, cfg, { additionalContext } = {}) {
   const baseUrl = (cfg.aiBaseUrl || 'http://localhost:20128/v1').replace(/\/+$/, '');
   const model = cfg.aiModel || 'gpt-4o';
   const lang = cfg.language === 'id' ? 'Bahasa Indonesia' : 'English';
@@ -96,7 +110,7 @@ Rules:
       model,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Here is the diff:\n\n${diff}` }
+        { role: 'user', content: `Here is the diff:\n\n${diff}${additionalContext ? `\n\nAdditional context from the author (use this to inform the description):\n${additionalContext}` : ''}` }
       ],
       temperature: 0.3,
       stream: false  
